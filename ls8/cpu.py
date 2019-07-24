@@ -15,6 +15,7 @@ class CPU:
         self.running = False
         self.ram = [0] * 512
         self.pc = 0
+        self.sp = 7
 
     def ram_read(self, MAR):
         """Read the RAM. MAR = memory address register"""
@@ -51,7 +52,7 @@ class CPU:
                         continue  # ignore blank lines
 
                     val = int(number, 2)
-
+                    # print('val from file being read:', val)
                     # store it in memory
                     self.ram_write(val, address)
 
@@ -67,9 +68,9 @@ class CPU:
         if op == "ADD":
             self.reg[reg_a] += self.reg[reg_b]
         # elif op == "SUB": etc
-        if op == "MUL":
-            self.registers[reg_a] = bin(
-                self.registers[reg_a] * self.registers[reg_b])
+        elif op == "MUL":
+            self.registers[reg_a] = self.registers[reg_a] * \
+                self.registers[reg_b]
         else:
             raise Exception("Unsupported ALU operation")
 
@@ -98,20 +99,22 @@ class CPU:
         self.running = True
         while self.running:
             op_code = self.ram_read(self.pc)  # instruction
+            # all op_code are saved in ram as an integer
+            # but you can == compare integers with binary
 
             if op_code == 0b00000001:  # HLT (halt)
                 self.running = False
                 sys.exit(1)
 
             elif op_code == 0b10000010:  # LDI (load "immediate")
-                data_a = self.ram_read(self.pc + 1)
-                data_b = self.ram_read(self.pc + 2)
-                self.registers[data_a] = data_b
+                address = self.ram_read(self.pc + 1)
+                data = self.ram_read(self.pc + 2)
+                self.registers[address] = data
                 self.increment_pc(op_code)
 
             elif op_code == 0b01000111:  # PRN ()
                 address_a = self.ram_read(self.pc + 1)
-                print(int(self.registers[address_a], 2))
+                print(self.registers[address_a])
                 self.increment_pc(op_code)
                 pass
 
@@ -121,6 +124,17 @@ class CPU:
                 self.alu('MUL', address_a, address_b)
 
                 self.increment_pc(op_code)
-
+            elif op_code == 0b01000101:  # PUSH
+                register_address = self.ram_read(self.pc + 1)
+                val = self.registers[register_address]
+                self.registers[self.sp] -= 1  # decrement the stack pointer
+                self.ram[self.registers[self.sp]] = val
+                self.increment_pc(op_code)
+            elif op_code == 0b01000110:  # POP
+                register_address = self.ram_read(self.pc + 1)
+                val = self.ram[self.registers[self.sp]]
+                self.registers[register_address] = val
+                self.registers[self.sp] += 1
+                self.increment_pc(op_code)
             else:
                 print('here is the else')
