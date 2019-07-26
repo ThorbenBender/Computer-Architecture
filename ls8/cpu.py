@@ -13,9 +13,10 @@ class CPU:
         # r7 = stack pointer
         self.registers = [0] * 8  # r0 - r7
         self.running = False
-        self.ram = [0] * 512
+        self.ram = [0] * 256
         self.pc = 0
         self.sp = 7
+        self.flag = 0b00000000
 
     def ram_read(self, MAR):
         """Read the RAM. MAR = memory address register"""
@@ -66,11 +67,18 @@ class CPU:
         """ALU operations."""
 
         if op == "ADD":
-            self.reg[reg_a] += self.reg[reg_b]
+            self.registers[reg_a] += self.registers[reg_b]
         # elif op == "SUB": etc
         elif op == "MUL":
             self.registers[reg_a] = self.registers[reg_a] * \
                 self.registers[reg_b]
+        elif op == "CMP":
+            if self.registers[reg_a] == self.registers[reg_b]:
+                self.flag = 0b00000001
+            elif self.registers[reg_a] > self.registers[reg_b]:
+                self.flag = 0b00000010
+            else:
+                self.flag = 0b00000100
         else:
             raise Exception("Unsupported ALU operation")
 
@@ -117,13 +125,41 @@ class CPU:
                 print(self.registers[address_a])
                 self.increment_pc(op_code)
                 pass
-
-            elif op_code == 0b10100010:  # MUL R0,R1
+            elif op_code == 0b10100111:  # CMP
+                address_a = self.ram_read(self.pc + 1)
+                address_b = self.ram_read(self.pc + 2)
+                self.alu('CMP', address_a, address_b)
+                self.increment_pc(op_code)
+            elif op_code == 0b10100000:  # ADD
+                address_a = self.ram_read(self.pc + 1)
+                address_b = self.ram_read(self.pc + 2)
+                self.alu('ADD', address_a, address_b)
+                self.increment_pc(op_code)
+            elif op_code == 0b10100010:  # MUL
                 address_a = self.ram_read(self.pc + 1)
                 address_b = self.ram_read(self.pc + 2)
                 self.alu('MUL', address_a, address_b)
-
                 self.increment_pc(op_code)
+            elif op_code == 0b01010100:  # jump
+                # get the register address out of the memory
+                register_address = self.ram_read(self.pc + 1)
+                # assign the program counter to the value of registers with the index of the register_adress
+                self.pc = self.registers[register_address]
+            elif op_code == 0b01010101:  # jump if equal
+                # get the register address from memory
+                register_address = self.ram_read(self.pc + 1)
+                # check if equal is true
+                if self.flag == 0b00000001:
+                    self.pc = self.registers[register_address]
+                # else increment by op code
+                else:
+                    self.increment_pc(op_code)
+            elif op_code == 0b01010110:  # jump if not equal
+                register_address = self.ram_read(self.pc + 1)
+                if self.flag != 0b00000001:
+                    self.pc = self.registers[register_address]
+                else:
+                    self.increment_pc(op_code)
             elif op_code == 0b01000101:  # PUSH
                 register_address = self.ram_read(self.pc + 1)
                 val = self.registers[register_address]
@@ -136,5 +172,20 @@ class CPU:
                 self.registers[register_address] = val
                 self.registers[self.sp] += 1
                 self.increment_pc(op_code)
+            # CALL Calls a subroutine (function) at the address stored in the register.
+            elif op_code == 0b01010000:
+                # stack pointer (stored in R7) goes down by one
+                self.registers[self.sp] -= 1
+                # at the stack pointer we're saving the return address
+                self.ram[self.registers[self.sp]] = self.pc + 2
+                # The PC is set to the address stored in the given register
+                # + 1 pc moves to next instruction (which is an address of the subroutine)
+                address_of_subroutine = self.ram[self.pc + 1]
+                self.pc = self.registers[address_of_subroutine]
+            # RET Pop the value from the top of the stack and store it in the pc.
+            elif op_code == 0b00010001:
+                self.pc = self.ram[self.registers[self.sp]]
+                # because we have popped off the stack, need to move the sp up one
+                self.registers[self.sp] += 1
             else:
                 print('here is the else')
